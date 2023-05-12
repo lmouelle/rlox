@@ -86,11 +86,11 @@ fn exec(vm : &mut VirtualMachine) {
 
 fn repl() {
     let mut buf = String::new();
-    let res = std::io::stdin().read_line(buf);
+    let res = std::io::stdin().read_line(&mut buf);
     match res {
         Ok(0) => exit(0),
-        Ok(n) => 
-        Err(foo) => eprintln!("{}", foo),
+        Ok(_) => todo!(),
+        Err(foo) => eprintln!("{}", foo)
     }
 }
 
