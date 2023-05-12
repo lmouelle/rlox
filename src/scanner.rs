@@ -1,12 +1,12 @@
 use std::{iter::Peekable, str::Chars};
 
 struct Scanner<'a> {
-    buff: &'a String,
-    iter: &'a Peekable<Chars<'a>>,
+    iter: Peekable<Chars<'a>>,
     line: i32,
 }
 
-enum TokenType<'a> {
+#[derive(Debug, PartialEq)]
+enum TokenType {
     LeftParen,
     RightParen,
     LeftBrace,
@@ -26,8 +26,8 @@ enum TokenType<'a> {
     Lesser,
     GreaterEqual,
     LesserEqual,
-    Identifier(&'a String),
-    String(&'a String),
+    Identifier(String),
+    String(String),
     Number(f64),
     And,
     Or,
@@ -44,14 +44,14 @@ enum TokenType<'a> {
     This,
     True,
     Var,
-    Error(&'a String),
+    Error(String),
     EOF,
-    Comment(&'a String),
+    Comment(String),
 }
 
-struct Token<'a> {
+struct Token {
     line: i32,
-    typ: TokenType<'a>,
+    typ: TokenType,
 }
 
 impl<'a> Scanner<'a> {
@@ -62,44 +62,50 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn make_error(&self, errormsg: &String) -> Token {
+    fn make_error(&self, errormsg: String) -> Token {
         Token {
             line: self.line,
             typ: TokenType::Error(errormsg),
         }
     }
 
-    fn new(buff: &String) -> Scanner {
+    fn new(buff: &'a String) -> Scanner<'a> {
+        let iterator = buff.chars().peekable();
         Scanner {
-            buff,
             line: 1,
-            iter: &buff.chars().peekable(),
+            iter: iterator,
         }
     }
 
-    fn is_at_end(&self) -> bool {
+    fn is_at_end(&mut self) -> bool {
         match self.iter.peek() {
             None => true,
             Some(_) => false,
         }
     }
 
-    fn matches(&self, expected: char) -> bool {
+    fn matches(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             return false;
         }
         if let Some(c) = self.iter.next() {
-            return true;
+            return c == expected;
         }
         return false;
     }
 
-    fn skip_whitespace(&self) {
-        self.iter
-            .skip_while(|x| x == &'\n' || x == &'\r' || x == &' ' || x == &'\t');
+    fn skip_whitespace(&mut self) {
+        while let Some(c) = self.iter.peek() {
+            if c.is_whitespace() {
+                self.iter.next();
+            }
+            else {
+                return;
+            }
+        }
     }
 
-    fn read_till_eol(&self) -> String {
+    fn read_till_eol(&mut self) -> String {
         let mut buff = String::new();
         while let Some(c) = self.iter.next() {
             if c == '\n'
@@ -115,10 +121,10 @@ impl<'a> Scanner<'a> {
 }
 
 impl<'a> Iterator for Scanner<'a> {
-    type Item = Token<'a>;
+    type Item = Token;
 
     // Equal to ScanToken in the CraftingInterpreters book
-    fn next(&mut self) -> Option<Token<'a>> {
+    fn next(&mut self) -> Option<Token> {
         self.skip_whitespace();
 
         match self.iter.next() {
@@ -134,12 +140,12 @@ impl<'a> Iterator for Scanner<'a> {
             Some('+') => Some(self.make_token(TokenType::Plus)),
             Some('*') => Some(self.make_token(TokenType::Star)),
             Some('/') => Some(match self.iter.peek() {
-                None => self.make_error(&String::from("Unexpected EOF on char /")),
+                None => self.make_error(String::from("Unexpected EOF on char /")),
                 Some('/') => {
                     let comment = self.read_till_eol();
-                    self.make_token(TokenType::Comment(&comment))
+                    self.make_token(TokenType::Comment(comment))
                 }
-                Some(etc) => self.make_token(TokenType::Slash),
+                Some(_) => self.make_token(TokenType::Slash),
             }),
             Some('!') => Some(if self.matches('=') {
                 self.make_token(TokenType::BangEqual)
@@ -161,7 +167,59 @@ impl<'a> Iterator for Scanner<'a> {
             } else {
                 self.make_token(TokenType::Lesser)
             }),
-            Some(etc) => Some(self.make_error(&format!("Unexpected character {}", etc))),
+            Some(etc) => Some(self.make_error(format!("Unexpected character {}", etc))),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::scanner::TokenType;
+
+    use super::Scanner;
+
+    #[test]
+    fn comment () {
+        let buff = String::from("1 // foo bar baz \n + 2");
+        let mut scanner = Scanner::new(&buff);
+
+        let one = scanner.next().expect("Expected single digit in multi line statement");
+        let plus = scanner.next().expect("Expected plus in multi line statement");
+        let two = scanner.next().expect("Expected operand in multiline statement");
+        let end = scanner.next();
+
+        match end {
+            None => (),
+            Some(t) => panic!("Expected end of expression, found {:?} on line {}", t.typ, t.line)
+        }
+
+        assert_eq!(one.typ, TokenType::Number(1.0));
+        assert_eq!(plus.typ, TokenType::Plus);
+        assert_eq!(two.typ, TokenType::Number(2.0))
+    }
+
+    #[test]
+    fn basic_addition() {
+        let buff = String::from(" 1 +1");
+        let mut scanner = Scanner::new(&buff);
+        
+        let lhs = scanner.next().expect("Expected lhs of 1+1");
+        let plus = scanner.next().expect("Expected plus of 1+1");
+        let rhs = scanner.next().expect("Expected rhs of 1+1");
+        let end = scanner.next();
+
+        assert_eq!(lhs.line, 1);
+        assert_eq!(rhs.line, 1);
+        assert_eq!(plus.line, 1);
+
+        match end {
+            None => (),
+            Some(tok) => panic!("Expected none for end of statement, found {:?} on line {}", tok.typ, tok.line)
+        }
+
+        assert_eq!(lhs.typ, TokenType::Number(1.0));
+        assert_eq!(rhs.typ, TokenType::Number(1.0));
+        assert_eq!(plus.typ, TokenType::Plus);
     }
 }
