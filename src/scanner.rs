@@ -109,7 +109,7 @@ impl<'a> Scanner<'a> {
         let mut buff = String::new();
         while let Some(c) = self.iter.next() {
             if c == '\n'
-                || c == '\r' && self.iter.peek().expect("Expected newline after \\r") == &'\n'
+                || c == '\r' && *self.iter.peek().expect("Expected newline after \\r") == '\n'
             {
                 break;
             }
@@ -143,6 +143,7 @@ impl<'a> Iterator for Scanner<'a> {
                 None => self.make_error(String::from("Unexpected EOF on char /")),
                 Some('/') => {
                     let comment = self.read_till_eol();
+                    self.line += 1;
                     self.make_token(TokenType::Comment(comment))
                 }
                 Some(_) => self.make_token(TokenType::Slash),
