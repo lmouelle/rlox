@@ -105,6 +105,22 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    /// this function assumes you called next() once to consume the initial double quote
+    fn make_string_token(&mut self) -> Token {
+        let mut buff = String::new();
+        while let Some(c) = self.iter.next() {
+            if c == '\n' {
+                self.line += 1;
+            }
+            if c == '"' {
+                return self.make_token(TokenType::String(buff));
+            }
+            buff.push(c);
+        }
+
+        return self.make_error(String::from("Unterminated string"));
+    }
+
     fn read_till_eol(&mut self) -> String {
         let mut buff = String::new();
         while let Some(c) = self.iter.next() {
@@ -129,6 +145,7 @@ impl<'a> Iterator for Scanner<'a> {
 
         match self.iter.next() {
             None => None,
+            Some('"') => Some(self.make_string_token()),
             Some('(') => Some(self.make_token(TokenType::LeftParen)),
             Some(')') => Some(self.make_token(TokenType::RightParen)),
             Some('{') => Some(self.make_token(TokenType::LeftBrace)),
@@ -198,6 +215,23 @@ mod tests {
         assert_eq!(one.typ, TokenType::Number(1.0));
         assert_eq!(plus.typ, TokenType::Plus);
         assert_eq!(two.typ, TokenType::Number(2.0))
+    }
+
+    #[test]
+    fn string_literal () {
+        let buff = String::from("\"foo bar\n baz\""); // multiline, whitespace-having string
+        let mut scanner = Scanner::new(&buff);
+
+        let string = scanner.next().expect("Expected single string in buffer");
+        let end = scanner.next();
+
+        match end {
+            None => (),
+            Some(tok) => panic!("Expected none for end of statement, found {:?} on line {}", tok.typ, tok.line)
+        }
+
+        assert_eq!(string.typ, TokenType::String(String::from("foo bar\n baz")));
+        assert_eq!(string.line, 2);
     }
 
     #[test]
