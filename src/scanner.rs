@@ -283,7 +283,8 @@ mod tests {
 
         assert_eq!(one.typ, TokenType::Number(1.0));
         assert_eq!(plus.typ, TokenType::Plus);
-        assert_eq!(two.typ, TokenType::Number(2.0))
+        assert_eq!(two.typ, TokenType::Number(2.0));
+        assert_eq!(two.line, 2);
     }
 
     #[test]
