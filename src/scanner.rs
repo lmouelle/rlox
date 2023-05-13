@@ -121,6 +121,38 @@ impl<'a> Scanner<'a> {
         return self.make_error(String::from("Unterminated string"));
     }
 
+    fn match_number_token(&mut self) -> Token {
+        let mut buff = String::new();
+
+        while let Some(c) = self.iter.next() {
+            if c.is_digit(10) || c == '.' {
+                buff.push(c)
+            }
+        }
+
+        let result = buff.parse::<f64>();
+        match result {
+            Ok(v) => self.make_token(TokenType::Number(v)),
+            Err(e) => self.make_error(format!("Failed to tokenize number {}", e))
+        }
+    }
+
+    fn match_identifier_token(&mut self) -> Token {
+        let mut buff = String::new();
+
+        while let Some(c) = self.iter.peek() {
+            if c.is_alphanumeric() {
+                let item = self.iter.next().expect("Peeked already");
+                buff.push(item);
+            }
+            else {
+                break;
+            }
+        }
+
+        self.make_token(TokenType::Identifier(buff))
+    }
+
     fn read_till_eol(&mut self) -> String {
         let mut buff = String::new();
         while let Some(c) = self.iter.next() {
@@ -145,6 +177,8 @@ impl<'a> Iterator for Scanner<'a> {
 
         match self.iter.next() {
             None => None,
+            Some(digit) if digit.is_digit(10) => Some(self.match_number_token()),
+            Some(alpha) if alpha.is_alphabetic() => Some(self.match_identifier_token()),
             Some('"') => Some(self.make_string_token()),
             Some('(') => Some(self.make_token(TokenType::LeftParen)),
             Some(')') => Some(self.make_token(TokenType::RightParen)),
@@ -198,6 +232,44 @@ mod tests {
     use super::Scanner;
 
     #[test]
+    fn identifier_token() {
+        let buff = String::from("foo - bar + 2");
+        let mut scanner = Scanner::new(&buff);
+
+        let foo = scanner.next().expect("Expected lhs");
+        let less = scanner.next().expect("Expected minus");
+        let bar = scanner.next().expect("Expected bar");
+        let plus = scanner.next().expect("Expected plus");
+        let two = scanner.next().expect("Expected 2");
+        let end = scanner.next();
+
+        assert!(end.is_none());
+
+        assert_eq!(foo.typ, TokenType::Identifier(String::from("foo")));
+        assert_eq!(less.typ, TokenType::Dash);
+        assert_eq!(bar.typ, TokenType::Identifier(String::from("bar")));
+        assert_eq!(plus.typ, TokenType::Plus);
+        assert_eq!(two.typ, TokenType::Number(2.0));
+    }
+
+    #[test]
+    fn number_token() {
+        let buff = String::from("11222.654 * \n2");
+        let mut scanner = Scanner::new(&buff);
+
+        let decimal = scanner.next().expect("Expected decimal value");
+        let star = scanner.next().expect("Expected star value");
+        let integer = scanner.next().expect("Expected numeric value on lhs");
+        let end = scanner.next();
+
+        assert!(end.is_none());
+
+        assert_eq!(decimal.typ, TokenType::Number(11222.654));
+        assert_eq!(star.typ, TokenType::Star);
+        assert_eq!(integer.typ, TokenType::Number(2.0));
+    }
+
+    #[test]
     fn comment () {
         let buff = String::from("1 // foo bar baz \n + 2");
         let mut scanner = Scanner::new(&buff);
@@ -207,10 +279,7 @@ mod tests {
         let two = scanner.next().expect("Expected operand in multiline statement");
         let end = scanner.next();
 
-        match end {
-            None => (),
-            Some(t) => panic!("Expected end of expression, found {:?} on line {}", t.typ, t.line)
-        }
+        assert!(end.is_none());
 
         assert_eq!(one.typ, TokenType::Number(1.0));
         assert_eq!(plus.typ, TokenType::Plus);
@@ -225,10 +294,7 @@ mod tests {
         let string = scanner.next().expect("Expected single string in buffer");
         let end = scanner.next();
 
-        match end {
-            None => (),
-            Some(tok) => panic!("Expected none for end of statement, found {:?} on line {}", tok.typ, tok.line)
-        }
+        assert!(end.is_none());
 
         assert_eq!(string.typ, TokenType::String(String::from("foo bar\n baz")));
         assert_eq!(string.line, 2);
@@ -248,10 +314,7 @@ mod tests {
         assert_eq!(rhs.line, 1);
         assert_eq!(plus.line, 1);
 
-        match end {
-            None => (),
-            Some(tok) => panic!("Expected none for end of statement, found {:?} on line {}", tok.typ, tok.line)
-        }
+        assert!(end.is_none());
 
         assert_eq!(lhs.typ, TokenType::Number(1.0));
         assert_eq!(rhs.typ, TokenType::Number(1.0));
