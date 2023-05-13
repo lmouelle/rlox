@@ -143,7 +143,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn match_identifier_token(&mut self) -> Token {
+    fn match_identifier_or_keyword(&mut self) -> Token {
         let mut buff = String::new();
 
         let initial_letter = self.iter.next().expect("Peeked in caller method");
@@ -158,8 +158,29 @@ impl<'a> Scanner<'a> {
                 break;
             }
         }
+        return self.gen_token_type(buff);
+    }
+    
+    fn gen_token_type (&mut self, buff : String) -> Token {
 
-        Token { line: self.line,  typ: TokenType::Identifier(buff) }
+        match buff.as_str() {
+            "and" => Token { line: self.line, typ: TokenType::And },
+            "else" => Token { line: self.line, typ: TokenType::Else },
+            "fun" => Token { line : self.line, typ : TokenType::Function },
+            "for" => Token { line : self.line, typ : TokenType::For },
+            "false" => Token { line : self.line, typ : TokenType::False },
+            "if" => Token { line: self.line, typ: TokenType::If },
+            "nil" => Token { line: self.line, typ: TokenType::Nil },
+            "or" => Token { line: self.line, typ: TokenType::Or },
+            "print" => Token { line: self.line, typ: TokenType::Print },
+            "true" => Token { line: self.line, typ: TokenType::True },
+            "this" => Token { line: self.line, typ: TokenType::This },
+            "return" => Token { line: self.line, typ: TokenType::Return },
+            "var" => Token { line: self.line, typ: TokenType::Var },
+            "while" => Token { line: self.line, typ: TokenType::While },
+            _ => Token { line: self.line,  typ: TokenType::Identifier(buff) }
+        } 
+        
     }
 
     /// Advances up to, and including, end of line character
@@ -203,7 +224,7 @@ impl<'a> Iterator for Scanner<'a> {
         match self.iter.peek() {
             None => None,
             Some(digit) if digit.is_digit(10) => Some(self.match_number_token()),
-            Some(alpha) if alpha.is_alphabetic() => Some(self.match_identifier_token()),
+            Some(alpha) if alpha.is_alphabetic() => Some(self.match_identifier_or_keyword()),
             Some('"') => Some(self.advance_and_make_string_token()),
             Some('(') => Some(self.advance_and_make_token(TokenType::LeftParen)),
             Some(')') => Some(self.advance_and_make_token(TokenType::RightParen)),
@@ -249,7 +270,32 @@ impl<'a> Iterator for Scanner<'a> {
 mod tests {
     use crate::scanner::TokenType;
 
-    use super::Scanner;
+    use super::{Scanner, Token};
+
+    impl Token {
+        fn assert_token_type(&self, t : TokenType) {
+            assert_eq!(self.typ, t, "Expected token of type {:?}, got {:?}", t, self.typ);
+        }
+    }
+
+    #[test]
+    fn keyword_test_1 () {
+        let buff = String::from("while (false) { x = x + 1}");
+        let mut scanner = Scanner::new(&buff);
+
+         scanner.next().expect("Expected while").assert_token_type(TokenType::While);
+         scanner.next().expect("Expected lparen").assert_token_type(TokenType::LeftParen);
+         scanner.next().expect("Expected false").assert_token_type(TokenType::False);
+         scanner.next().expect("Expected rparen").assert_token_type(TokenType::RightParen);
+        scanner.next().expect("Expected Lbrace").assert_token_type(TokenType::LeftBrace);
+         scanner.next().expect("Expected first x ref").assert_token_type(TokenType::Identifier("x".to_owned()));
+         scanner.next().expect("Expected eq").assert_token_type(TokenType::Equal);
+         scanner.next().expect("Expected second x ref").assert_token_type(TokenType::Identifier("x".to_owned()));
+         scanner.next().expect("Expected plus").assert_token_type(TokenType::Plus);
+        scanner.next().expect("Expected one").assert_token_type(TokenType::Number(1.0));
+         scanner.next().expect("Expected rbrace").assert_token_type(TokenType::RightBrace);
+         assert!(scanner.next().is_some(), "Expected end of expression");
+    }
 
     #[test]
     fn identifier_token() {
