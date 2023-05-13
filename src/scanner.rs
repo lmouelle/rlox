@@ -426,16 +426,10 @@ mod tests {
         let buff = String::from("11222.654 * \n2");
         let mut scanner = Scanner::new(&buff);
 
-        let decimal = scanner.next().expect("Expected decimal value");
-        let star = scanner.next().expect("Expected star value");
-        let integer = scanner.next().expect("Expected numeric value on lhs");
-        let end = scanner.next();
-
-        assert!(end.is_none());
-
-        assert_eq!(decimal.typ, TokenType::Number(11222.654));
-        assert_eq!(star.typ, TokenType::Star);
-        assert_eq!(integer.typ, TokenType::Number(2.0));
+        scanner.next().expect("Expected decimal value").assert_token_type(TokenType::Number(11222.654));
+        scanner.next().expect("Expected star value").assert_token_type(TokenType::Star);
+        scanner.next().expect("Expected numeric value on lhs").assert_token_type(TokenType::Number(2.0));
+        assert!(scanner.next().is_none(), "Expected end of expression");
     }
 
     #[test]
