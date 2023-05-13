@@ -49,6 +49,7 @@ enum TokenType {
     Comment(String),
 }
 
+#[derive(Debug)]
 struct Token {
     line: i32,
     typ: TokenType,
@@ -124,9 +125,12 @@ impl<'a> Scanner<'a> {
     fn match_number_token(&mut self) -> Token {
         let mut buff = String::new();
 
-        while let Some(c) = self.iter.next() {
-            if c.is_digit(10) || c == '.' {
-                buff.push(c)
+        while let Some(c) = self.iter.peek() {
+            if c.is_digit(10) || *c == '.' {
+                buff.push(self.iter.next().expect("Already peeked"))
+            }
+            else {
+                break;
             }
         }
 
