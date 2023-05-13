@@ -413,20 +413,12 @@ mod tests {
         let buff = String::from("foo - bar + 2");
         let mut scanner = Scanner::new(&buff);
 
-        let foo = scanner.next().expect("Expected lhs");
-        let less = scanner.next().expect("Expected minus");
-        let bar = scanner.next().expect("Expected bar");
-        let plus = scanner.next().expect("Expected plus");
-        let two = scanner.next().expect("Expected 2");
-        let end = scanner.next();
-
-        assert!(end.is_none());
-
-        assert_eq!(foo.typ, TokenType::Identifier(String::from("foo")));
-        assert_eq!(less.typ, TokenType::Dash);
-        assert_eq!(bar.typ, TokenType::Identifier(String::from("bar")));
-        assert_eq!(plus.typ, TokenType::Plus);
-        assert_eq!(two.typ, TokenType::Number(2.0));
+        scanner.next().expect("Expected lhs").assert_token_type(TokenType::Identifier("foo".to_owned()));
+        scanner.next().expect("Expected minus").assert_token_type(TokenType::Dash);
+        scanner.next().expect("Expected bar").assert_token_type(TokenType::Identifier("bar".to_owned()));
+        scanner.next().expect("Expected plus").assert_token_type(TokenType::Plus);
+        scanner.next().expect("Expected 2").assert_token_type(TokenType::Number(2.0));
+        assert!(scanner.next().is_none(), "Expected end of statement");
     }
 
     #[test]
