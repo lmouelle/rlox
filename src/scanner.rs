@@ -56,7 +56,8 @@ struct Token {
 }
 
 impl<'a> Scanner<'a> {
-    fn make_token(&self, typ: TokenType) -> Token {
+    fn advance_and_make_token(&mut self, typ: TokenType) -> Token {
+        self.iter.next();
         Token {
             line: self.line,
             typ,
@@ -78,21 +79,17 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn is_at_end(&mut self) -> bool {
+    fn advance_and_advance_if_match(&mut self, expected: char) -> bool {
+        let _initial_char = self.iter.next().expect("Peeked in caller");
         match self.iter.peek() {
-            None => true,
-            Some(_) => false,
+            None => false,
+            Some(c) => if *c == expected {
+                self.iter.next();
+                true
+            } else {
+                false
+            }
         }
-    }
-
-    fn matches(&mut self, expected: char) -> bool {
-        if self.is_at_end() {
-            return false;
-        }
-        if let Some(c) = self.iter.next() {
-            return c == expected;
-        }
-        return false;
     }
 
     fn skip_whitespace(&mut self) {
@@ -106,15 +103,20 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /// this function assumes you called next() once to consume the initial double quote
-    fn make_string_token(&mut self) -> Token {
+    fn advance_and_make_string_token(&mut self) -> Token {
         let mut buff = String::new();
+
+        let initialdoublequote = self.iter.next().expect("Initial double quote expected");
+        if initialdoublequote != '"' {
+            panic!("Initial \" expected");
+        }
+
         while let Some(c) = self.iter.next() {
             if c == '\n' {
                 self.line += 1;
             }
             if c == '"' {
-                return self.make_token(TokenType::String(buff));
+                return Token { line: self.line, typ: TokenType::String(buff)};
             }
             buff.push(c);
         }
@@ -136,13 +138,16 @@ impl<'a> Scanner<'a> {
 
         let result = buff.parse::<f64>();
         match result {
-            Ok(v) => self.make_token(TokenType::Number(v)),
+            Ok(v) => self.advance_and_make_token(TokenType::Number(v)),
             Err(e) => self.make_error(format!("Failed to tokenize number {}", e))
         }
     }
 
     fn match_identifier_token(&mut self) -> Token {
         let mut buff = String::new();
+
+        let initial_letter = self.iter.next().expect("Peeked in caller method");
+        buff.push(initial_letter);
 
         while let Some(c) = self.iter.peek() {
             if c.is_alphanumeric() {
@@ -154,21 +159,37 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        self.make_token(TokenType::Identifier(buff))
+        Token { line: self.line,  typ: TokenType::Identifier(buff) }
     }
 
-    fn read_till_eol(&mut self) -> String {
+    /// Advances up to, and including, end of line character
+    fn advance_thru_eol(&mut self) -> String {
         let mut buff = String::new();
         while let Some(c) = self.iter.next() {
-            if c == '\n'
-                || c == '\r' && *self.iter.peek().expect("Expected newline after \\r") == '\n'
-            {
+            if c == '\n' {
                 break;
             }
             buff.push(c);
         }
 
         return buff;
+    }
+
+    fn advance_and_handle_slash(&mut self) -> Token {
+        let initial_slash = self.iter.next().expect("Peeked in caller");
+        if initial_slash != '/' {
+            panic!("Initial / expected");
+        }
+
+        match self.iter.peek() {
+            None => self.make_error(String::from("Unexpected EOF on char /")),
+            Some('/') => {
+                let comment = self.advance_thru_eol();
+                self.line += 1;
+                Token { line : self.line, typ : TokenType::Comment(comment) }
+            }
+            Some(_) => Token { line : self.line, typ : TokenType::Slash },
+        }
     }
 }
 
@@ -179,51 +200,46 @@ impl<'a> Iterator for Scanner<'a> {
     fn next(&mut self) -> Option<Token> {
         self.skip_whitespace();
 
-        match self.iter.next() {
+        match self.iter.peek() {
             None => None,
             Some(digit) if digit.is_digit(10) => Some(self.match_number_token()),
             Some(alpha) if alpha.is_alphabetic() => Some(self.match_identifier_token()),
-            Some('"') => Some(self.make_string_token()),
-            Some('(') => Some(self.make_token(TokenType::LeftParen)),
-            Some(')') => Some(self.make_token(TokenType::RightParen)),
-            Some('{') => Some(self.make_token(TokenType::LeftBrace)),
-            Some('}') => Some(self.make_token(TokenType::RightBrace)),
-            Some(';') => Some(self.make_token(TokenType::Semicolon)),
-            Some(',') => Some(self.make_token(TokenType::Comma)),
-            Some('.') => Some(self.make_token(TokenType::Dot)),
-            Some('-') => Some(self.make_token(TokenType::Dash)),
-            Some('+') => Some(self.make_token(TokenType::Plus)),
-            Some('*') => Some(self.make_token(TokenType::Star)),
-            Some('/') => Some(match self.iter.peek() {
-                None => self.make_error(String::from("Unexpected EOF on char /")),
-                Some('/') => {
-                    let comment = self.read_till_eol();
-                    self.line += 1;
-                    self.make_token(TokenType::Comment(comment))
-                }
-                Some(_) => self.make_token(TokenType::Slash),
-            }),
-            Some('!') => Some(if self.matches('=') {
-                self.make_token(TokenType::BangEqual)
+            Some('"') => Some(self.advance_and_make_string_token()),
+            Some('(') => Some(self.advance_and_make_token(TokenType::LeftParen)),
+            Some(')') => Some(self.advance_and_make_token(TokenType::RightParen)),
+            Some('{') => Some(self.advance_and_make_token(TokenType::LeftBrace)),
+            Some('}') => Some(self.advance_and_make_token(TokenType::RightBrace)),
+            Some(';') => Some(self.advance_and_make_token(TokenType::Semicolon)),
+            Some(',') => Some(self.advance_and_make_token(TokenType::Comma)),
+            Some('.') => Some(self.advance_and_make_token(TokenType::Dot)),
+            Some('-') => Some(self.advance_and_make_token(TokenType::Dash)),
+            Some('+') => Some(self.advance_and_make_token(TokenType::Plus)),
+            Some('*') => Some(self.advance_and_make_token(TokenType::Star)),
+            Some('/') => Some(self.advance_and_handle_slash()),
+            Some('!') => Some(if self.advance_and_advance_if_match('=') {
+                Token { line : self.line, typ : TokenType::BangEqual }
             } else {
-                self.make_token(TokenType::Bang)
+                Token { line : self.line, typ : TokenType::Bang }
             }),
-            Some('=') => Some(if self.matches('=') {
-                self.make_token(TokenType::EqualEqual)
+            Some('=') => Some(if self.advance_and_advance_if_match('=') {
+                Token { line : self.line, typ : TokenType::EqualEqual }
             } else {
-                self.make_token(TokenType::Equal)
+                Token { line : self.line, typ : TokenType::Equal }
             }),
-            Some('>') => Some(if self.matches('=') {
-                self.make_token(TokenType::GreaterEqual)
+            Some('>') => Some(if self.advance_and_advance_if_match('=') {
+                Token {line : self.line , typ : (TokenType::GreaterEqual) }
             } else {
-                self.make_token(TokenType::Greater)
+                Token {line : self.line , typ : (TokenType::Greater) }
             }),
-            Some('<') => Some(if self.matches('=') {
-                self.make_token(TokenType::LesserEqual)
+            Some('<') => Some(if self.advance_and_advance_if_match('=') {
+                Token { line : self.line, typ : TokenType::LesserEqual }
             } else {
-                self.make_token(TokenType::Lesser)
+                Token { line : self.line, typ : TokenType::Lesser }
             }),
-            Some(etc) => Some(self.make_error(format!("Unexpected character {}", etc))),
+            Some(etc) => Some(Token {
+                line: self.line,
+                typ: TokenType::Error(format!("Unexpected character {}", etc)),
+            }),
         }
     }
 }
