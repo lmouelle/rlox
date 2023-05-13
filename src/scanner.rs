@@ -295,6 +295,7 @@ mod tests {
         let mut scanner = Scanner::new(&buff);
 
         let one = scanner.next().expect("Expected single digit in multi line statement");
+        let _ = scanner.next().expect("Expected comment token to be generated");
         let plus = scanner.next().expect("Expected plus in multi line statement");
         let two = scanner.next().expect("Expected operand in multiline statement");
         let end = scanner.next();
