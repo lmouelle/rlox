@@ -405,7 +405,7 @@ mod tests {
             .next()
             .expect("Expected rbrace")
             .assert_token_type(TokenType::RightBrace);
-        assert!(scanner.next().is_some(), "Expected end of expression");
+        assert!(scanner.next().is_none(), "Expected end of expression");
     }
 
     #[test]
