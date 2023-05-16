@@ -1,6 +1,6 @@
 use std::{iter::Peekable, str::Chars};
 
-struct Scanner<'a> {
+pub struct Scanner<'a> {
     iter: Peekable<Chars<'a>>,
     line: i32,
 }
@@ -50,7 +50,7 @@ enum TokenType {
 }
 
 #[derive(Debug)]
-struct Token {
+pub struct Token {
     line: i32,
     typ: TokenType,
 }
@@ -141,7 +141,7 @@ impl<'a> Scanner<'a> {
 
         let result = buff.parse::<f64>();
         match result {
-            Ok(v) => self.advance_and_make_token(TokenType::Number(v)),
+            Ok(v) => Token { line : self.line, typ : TokenType::Number(v)},
             Err(e) => self.make_error(format!("Failed to tokenize number {}", e)),
         }
     }
