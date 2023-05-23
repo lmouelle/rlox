@@ -6,7 +6,7 @@ pub struct Scanner<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-enum TokenType {
+pub enum TokenType {
     LeftParen,
     RightParen,
     LeftBrace,
@@ -51,8 +51,8 @@ enum TokenType {
 
 #[derive(Debug)]
 pub struct Token {
-    line: i32,
-    typ: TokenType,
+    pub line: i32,
+    pub typ: TokenType,
 }
 
 impl<'a> Scanner<'a> {

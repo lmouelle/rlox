@@ -1,5 +1,5 @@
 pub mod scanner;
-pub mod compiler;
+pub mod parser;
 
 use std::{process::exit, env};
 
