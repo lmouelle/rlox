@@ -80,7 +80,7 @@ impl TokenType {
 }
 
 impl<'a> Parser<'a> {
-    fn parse_bin_op(&mut self, min_bp: u8) -> Expression {
+    fn parse_numeric_expr(&mut self, min_bp: u8) -> Expression {
         let mut lhs = match self.scanner.next() {
             Some(Token {
                 line,
@@ -88,7 +88,7 @@ impl<'a> Parser<'a> {
             }) => Expression::Value(line, Value::Number(n)),
             Some(Token { line, typ}) if typ == TokenType::Dash => {
                 let r_bp = typ.prefix_binding_power();
-                let rhs = self.parse_bin_op(r_bp);
+                let rhs = self.parse_numeric_expr(r_bp);
                 Expression::Negate(line, Box::new(rhs))
             },
             Some(Token { line, typ }) => Expression::Value(
@@ -124,7 +124,7 @@ impl<'a> Parser<'a> {
 
             let Token { line, typ } = self.scanner.next().expect("Already peeked");
 
-            let rhs = self.parse_bin_op(r_bp);
+            let rhs = self.parse_numeric_expr(r_bp);
             lhs = match typ {
                 TokenType::Plus => Expression::Add(line, Box::new(lhs), Box::new(rhs)),
                 TokenType::Dash => Expression::Subtract(line, Box::new(lhs), Box::new(rhs)),
@@ -164,7 +164,7 @@ mod tests {
         let scanner = Scanner::new(&buff);
         let mut parser = Parser::new(scanner);
 
-        let result = parser.parse_bin_op(0);
+        let result = parser.parse_numeric_expr(0);
         match result {
             Expression::Add(_, lhs, rhs) => match (*lhs, *rhs) {
                 (
@@ -191,7 +191,7 @@ mod tests {
         let scanner = Scanner::new(&buff);
         let mut parser = Parser::new(scanner);
 
-        let result = parser.parse_bin_op(0);
+        let result = parser.parse_numeric_expr(0);
         // TODO: This is sooooo ugly, find a better way to automate nested pattern matching
         match result {
             Expression::Add(_, lhs, rhs) => match *rhs {
@@ -229,7 +229,7 @@ mod tests {
         let scanner = Scanner::new(&buff);
         let mut parser = Parser::new(scanner);
 
-        let result = parser.parse_bin_op(0);
+        let result = parser.parse_numeric_expr(0);
         match result {
             Expression::Value(_, Value::Number(n)) => assert_eq!(n, 1.0),
             etc => panic!("Expected single value, found {:?}", etc),
@@ -242,7 +242,7 @@ mod tests {
         let scanner = Scanner::new(&buff);
         let mut parser = Parser::new(scanner);
 
-        let result = parser.parse_bin_op(0);
+        let result = parser.parse_numeric_expr(0);
         match result {
             Expression::Negate(_, lhs) => {
                 match *lhs {
@@ -262,7 +262,7 @@ mod tests {
         let scanner = Scanner::new(&buff);
         let mut parser = Parser::new(scanner);
 
-        let result = parser.parse_bin_op(0);
+        let result = parser.parse_numeric_expr(0);
         match result {
             Expression::Add(_, lhs, rhs) => {
                 match *lhs {
