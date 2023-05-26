@@ -1,133 +1,226 @@
-use std::iter::Peekable;
+use std::{fmt::Debug, iter::Peekable};
 
-use crate::scanner::{Token, Scanner, TokenType};
+use crate::scanner::{Scanner, Token, TokenType};
 
 struct Parser<'a> {
-    panicking : bool,
-    scanner : Peekable<Scanner<'a>>,
+    panicking: bool,
+    scanner: Peekable<Scanner<'a>>,
 }
 
 type LineNum = i32;
 
+#[derive(Debug)]
 enum Value {
-    Number(LineNum, f64),
-    Nil(LineNum),
-    Boolean(LineNum, bool),
-    String(LineNum, String),
-    Variable(LineNum, String),
-    Error(LineNum, String)
+    Number(f64),
+    Nil,
+    Boolean(bool),
+    String(String),
+    Variable(String),
+    Error(String),
 }
 
-enum Expression<'a> {
+#[derive(Debug)]
+enum Expression {
     Value(LineNum, Value),
-    If(LineNum, &'a Expression<'a>, &'a Expression<'a>, &'a Expression<'a>),
-    Or(LineNum, &'a Expression<'a>,  &'a Expression<'a>),
-    And(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
+    If(LineNum, Box<Expression>, Box<Expression>, Box<Expression>),
+    Or(LineNum, Box<Expression>, Box<Expression>),
+    And(LineNum, Box<Expression>, Box<Expression>),
     // Binary ops
-    Add(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
-    Subtract(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
-    Multiply(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
-    Divide(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
+    Add(LineNum, Box<Expression>, Box<Expression>),
+    Subtract(LineNum, Box<Expression>, Box<Expression>),
+    Multiply(LineNum, Box<Expression>, Box<Expression>),
+    Divide(LineNum, Box<Expression>, Box<Expression>),
     // Equality
-    Equals(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
-    NotEquals(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
+    Equals(LineNum, Box<Expression>, Box<Expression>),
+    NotEquals(LineNum, Box<Expression>, Box<Expression>),
     // Comparison
-    Greater(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
-    Lesser(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
-    LesserEqual(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
-    GreaterEqual(LineNum,  &'a Expression<'a>,  &'a Expression<'a>),
+    Greater(LineNum, Box<Expression>, Box<Expression>),
+    Lesser(LineNum, Box<Expression>, Box<Expression>),
+    LesserEqual(LineNum, Box<Expression>, Box<Expression>),
+    GreaterEqual(LineNum, Box<Expression>, Box<Expression>),
     // Misc
-    Grouping(LineNum,  &'a Expression<'a>),
-    Not(LineNum,  &'a Expression<'a>),
-    Negate(LineNum,  &'a Expression<'a>),
-    Invocation(LineNum, String, Vec<Expression<'a>>)
+    Grouping(LineNum, Box<Expression>),
+    Not(LineNum, Box<Expression>),
+    Negate(LineNum, Box<Expression>),
+    Invocation(LineNum, String, Vec<Expression>),
 }
 
-enum Statement<'a> {
-    Assignment(LineNum, String, Expression<'a>),
-    Mutation(LineNum, String, Expression<'a>),
-    Print(LineNum, Expression<'a>),
-    While(LineNum, Expression<'a>, &'a Statement<'a>),
-    FunctionDef(LineNum, Vec<String>, &'a Statement<'a>)
+enum Statement {
+    Assignment(LineNum, String, Expression),
+    Mutation(LineNum, String, Expression),
+    Print(LineNum, Expression),
+    While(LineNum, Expression, Box<Statement>),
+    FunctionDef(LineNum, Vec<String>, Box<Statement>),
 }
 
-type Ast<'a> = Vec<Statement<'a>>;
+type Ast = Vec<Statement>;
 
-impl  TokenType {
+impl TokenType {
     fn is_bin_op(&self) -> bool {
         match *self {
             TokenType::Plus | TokenType::Star | TokenType::Slash | TokenType::Dash => true,
-            _ => false
+            _ => false,
         }
     }
 
     fn infix_binding_power(&self) -> (u8, u8) {
         match self {
-            TokenType::Plus | TokenType::Dash => (1,2),
-            TokenType::Star | TokenType::Slash => (3,4),
-            etc => panic!("Bad argument to infix_binding_power: {:?}", etc)
+            TokenType::Plus | TokenType::Dash => (1, 2),
+            TokenType::Star | TokenType::Slash => (3, 4),
+            etc => panic!("Bad argument to infix_binding_power: {:?}", etc),
         }
     }
 }
 
-impl Parser {
-    fn parse_ast(&self) -> Ast {
-    }
-
-    fn parse_expr(&self) -> Expression {
-
-    }
-
-    fn parse_statement(&self) -> Statement {
-
-    }
-
-    fn parse_bin_op(&self) -> Expression {
-        let lhs = match self.scanner.next() {
-            Some(Token {line, typ : TokenType::Number(n) }) => n,
-            None => panic!("Unexpected EOF on parsing binary op"),
-            Some(etc) => panic!("Unexpected token {:?} on parsing binary op", etc)
+impl<'a> Parser<'a> {
+    fn parse_bin_op(&mut self, min_bp: u8) -> Expression {
+        let mut lhs = match self.scanner.next() {
+            Some(Token {
+                line,
+                typ: TokenType::Number(n),
+            }) => Expression::Value(line, Value::Number(n)),
+            Some(Token { line, typ }) => Expression::Value(
+                line,
+                Value::Error(format!("Unexpected token {:?} on parsing binary op", typ)),
+            ),
+            None => Expression::Value(
+                0,
+                Value::Error("Unexpected EOF on parsing binary op".to_owned()),
+            ), // TODO: Insert proper line nums for tokens
         };
 
         loop {
             let op = match self.scanner.peek() {
                 None => break,
-                Some(Token {line, typ }) if typ.is_bin_op() => typ,
-                Some(etc) => panic!("Unexpected token {:?} when parsing binary operation", etc)
+                Some(Token { typ, .. }) if typ.is_bin_op() => typ,
+                Some(Token { line, typ }) => {
+                    return Expression::Value(
+                        *line,
+                        Value::Error(format!(
+                            "Unexpected token {:?} when parsing binary operation",
+                            typ
+                        )),
+                    )
+                }
             };
 
             let (l_bp, r_bp) = op.infix_binding_power();
-        }
-    }
 
-    fn parse_value(&mut self) -> Value {
-        let token = self.scanner.next(); // TODO: Peek or Next?
-        match token {
-            None => { 
-                self.panicking = true;
-                Value::Error(0, format!("Unexpected EOF while parsing value")) 
-            },
-            Some(Token {typ : TokenType::Number(n), line }) => Value::Number(line, n),
-            Some(Token {typ : TokenType::Nil, line }) => Value::Nil(line),
-            Some(Token {typ : TokenType::True, line }) => Value::Boolean(line, true),
-            Some(Token {typ : TokenType::False, line }) => Value::Boolean(line, false),
-            Some(Token { line, typ: TokenType::String(s) }) => Value::String(line, s),
-            Some(Token { line, typ : TokenType::Identifier(s) }) => Value::Variable(line, s),
-            Some(Token { line, typ }) => {
-                self.panicking = true;
-                Value::Error(line, format!("Unexpected token in value parser: {:?}", typ))
+            if l_bp < min_bp {
+                break;
             }
+
+            let Token { line, typ } = self.scanner.next().expect("Already peeked");
+
+            let rhs = self.parse_bin_op(r_bp);
+            lhs = match typ {
+                TokenType::Plus => Expression::Add(line, Box::new(lhs), Box::new(rhs)),
+                TokenType::Dash => Expression::Subtract(line, Box::new(lhs), Box::new(rhs)),
+                TokenType::Star => Expression::Multiply(line, Box::new(lhs), Box::new(rhs)),
+                TokenType::Slash => Expression::Divide(line, Box::new(lhs), Box::new(rhs)),
+                etc => {
+                    return Expression::Value(
+                        line,
+                        Value::Error(format!(
+                            "Unexpected token {:?} when parsing binary operation",
+                            etc
+                        )),
+                    )
+                }
+            };
         }
+        lhs
     }
 
     fn new(scanner: Scanner) -> Parser {
-        Parser { panicking: false, scanner : scanner.peekable() }
+        Parser {
+            panicking: false,
+            scanner: scanner.peekable(),
+        }
     }
-
-    
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::scanner::Scanner;
 
+    use super::{Expression, Parser, Value};
+
+    #[test]
+    fn binary_op_test_1() {
+        let buff = String::from("1 + 2");
+        let scanner = Scanner::new(&buff);
+        let mut parser = Parser::new(scanner);
+
+        let result = parser.parse_bin_op(0);
+        match result {
+            Expression::Add(_, lhs, rhs) => match (*lhs, *rhs) {
+                (
+                    Expression::Value(_, Value::Number(n1)),
+                    Expression::Value(_, Value::Number(n2)),
+                ) => {
+                    assert_eq!(n1, 1.0);
+                    assert_eq!(n2, 2.0);
+                }
+                (unexpectedlhs, unexpectedrhs) => {
+                    panic!(
+                        "Expected 2 numbers, found {:?} and {:?}",
+                        unexpectedlhs, unexpectedrhs
+                    );
+                }
+            },
+            etc => panic!("Expected Add expr, found {:?}", etc),
+        }
+    }
+
+    #[test]
+    fn binary_op_test_2() {
+        let buff = String::from("1 + 2 * 3");
+        let scanner = Scanner::new(&buff);
+        let mut parser = Parser::new(scanner);
+
+        let result = parser.parse_bin_op(0);
+        // TODO: This is sooooo ugly, find a better way to automate nested pattern matching
+        match result {
+            Expression::Add(_, lhs, rhs) => match *rhs {
+                Expression::Multiply(_, addlhs, addrhs) => match (*addlhs, *addrhs) {
+                    (
+                        Expression::Value(_, Value::Number(n1)),
+                        Expression::Value(_, Value::Number(n2)),
+                    ) => {
+                        match *lhs {
+                            Expression::Value(_, Value::Number(n3)) => {
+                                assert_eq!(n3, 1.0);
+                            }
+                            etc => panic!("Expected lhs to be numeric literal, found {:?}", etc),
+                        }
+                        assert_eq!(n1, 2.0);
+                        assert_eq!(n2, 3.0);
+                    }
+                    (unexpectedlhs, unexpectedrhs) => {
+                        panic!(
+                            "Expected 2 numbers, found {:?} and {:?}",
+                            unexpectedlhs, unexpectedrhs
+                        );
+                    }
+                },
+                etc => panic!("Expected inner expr to be multiply, found {:?}", etc),
+            },
+            etc => panic!("Expected add expr, found {:?}", etc),
+        }
+    }
+
+    #[test]
+    fn numeric_literal() {
+        // TODO: Not sure if I need parse_binary_op to have this behavior?
+        let buff = String::from("1");
+        let scanner = Scanner::new(&buff);
+        let mut parser = Parser::new(scanner);
+
+        let result = parser.parse_bin_op(0);
+        match result {
+            Expression::Value(_, Value::Number(1.0)) => (),
+            etc => panic!("Expected single value, found {:?}", etc),
+        }
+    }
 }
