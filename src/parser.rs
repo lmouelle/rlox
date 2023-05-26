@@ -70,6 +70,13 @@ impl TokenType {
             etc => panic!("Bad argument to infix_binding_power: {:?}", etc),
         }
     }
+
+    fn prefix_binding_power(&self) -> u8 {
+        match self {
+            TokenType::Plus | TokenType::Dash => 5,
+            etc => panic!("Bad argument to prefix_binding_power: {:?}", etc)
+        }
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -79,6 +86,11 @@ impl<'a> Parser<'a> {
                 line,
                 typ: TokenType::Number(n),
             }) => Expression::Value(line, Value::Number(n)),
+            Some(Token { line, typ}) if typ == TokenType::Dash => {
+                let r_bp = typ.prefix_binding_power();
+                let rhs = self.parse_bin_op(r_bp);
+                Expression::Negate(line, Box::new(rhs))
+            },
             Some(Token { line, typ }) => Expression::Value(
                 line,
                 Value::Error(format!("Unexpected token {:?} on parsing binary op", typ)),
@@ -219,8 +231,59 @@ mod tests {
 
         let result = parser.parse_bin_op(0);
         match result {
-            Expression::Value(_, Value::Number(1.0)) => (),
+            Expression::Value(_, Value::Number(n)) => assert_eq!(n, 1.0),
             etc => panic!("Expected single value, found {:?}", etc),
         }
     }
+
+    #[test]
+    fn negate_expression_1() {
+        let buff = String::from("-1");
+        let scanner = Scanner::new(&buff);
+        let mut parser = Parser::new(scanner);
+
+        let result = parser.parse_bin_op(0);
+        match result {
+            Expression::Negate(_, lhs) => {
+                match *lhs {
+                    Expression::Value(_, Value::Number(n)) => {
+                        assert_eq!(n, 1.0);
+                    },
+                    etc => panic!("Expected val expr, receied {:?}", etc)
+                }
+            },
+            etc => panic!("Expected negation, receied {:?}", etc)
+        }
+    }
+
+    #[test]
+    fn negate_expression_2() {
+        let buff = String::from("2 + -1");
+        let scanner = Scanner::new(&buff);
+        let mut parser = Parser::new(scanner);
+
+        let result = parser.parse_bin_op(0);
+        match result {
+            Expression::Add(_, lhs, rhs) => {
+                match *lhs {
+                    Expression::Value(_, Value::Number(lhs_n)) => {
+                        match *rhs {
+                            Expression::Negate(_, negate_rhs) => {
+                                match *negate_rhs {
+                                    Expression::Value(_, Value::Number(negate_rhs_n)) => {
+                                        assert_eq!(lhs_n, 2.0);
+                                        assert_eq!(negate_rhs_n, 1.0);
+                                    },
+                                    etc => panic!("Expected numeric value right of negation, found {:?}", etc)
+                                }
+                            },
+                            etc => panic!("Expected negation, found {:?}", etc)
+                        }
+                    },
+                    etc => panic!("Expected numeral expr, found {:?}", etc)
+                }
+            },
+            etc => panic!("Expected addition expr, found {:?}" , etc)
+        }
+    }    
 }
