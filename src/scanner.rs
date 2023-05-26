@@ -71,7 +71,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn new(buff: &'a String) -> Scanner<'a> {
+    pub fn new(buff: &'a String) -> Scanner<'a> {
         let iterator = buff.chars().peekable();
         Scanner {
             line: 1,
