@@ -67,7 +67,7 @@ impl TokenType {
     fn prefix_binding_power(&self) -> u8 {
         match self {
             TokenType::Plus | TokenType::Dash => 5,
-            etc => panic!("Bad argument to prefix_binding_power: {:?}", etc)
+            etc => panic!("Bad argument to prefix_binding_power: {:?}", etc),
         }
     }
 }
@@ -79,20 +79,30 @@ impl<'a> Parser<'a> {
                 line,
                 typ: TokenType::Number(n),
             }) => Expression::Value(line, Value::Number(n)),
-            Some(Token { line, typ}) if typ == TokenType::Dash => {
+            Some(Token { line, typ }) if typ == TokenType::Dash => {
                 let r_bp = typ.prefix_binding_power();
                 let rhs = self.parse_numeric_expr(r_bp);
                 Expression::Negate(line, Box::new(rhs))
-            },
-            Some(Token { line, typ: TokenType::LeftParen }) => {
+            }
+            Some(Token {
+                line,
+                typ: TokenType::LeftParen,
+            }) => {
                 let expr = self.parse_numeric_expr(0);
                 match self.scanner.next() {
-                    Some(Token {typ: TokenType::RightParen, .. }) => {
-                        Expression::Grouping(line, Box::new(expr))
-                    },
-                    Some(tok) => Expression::Value(tok.line, Value::Error(format!("Unexpected token {:?} in parsing grouping", tok.typ))),
+                    Some(Token {
+                        typ: TokenType::RightParen,
+                        ..
+                    }) => Expression::Grouping(line, Box::new(expr)),
+                    Some(tok) => Expression::Value(
+                        tok.line,
+                        Value::Error(format!(
+                            "Unexpected token {:?} in parsing grouping",
+                            tok.typ
+                        )),
+                    ),
                     // TODO: Insert proper line num for EOF
-                    None => Expression::Value(0, Value::Error("Unexpected EOF".to_owned()))
+                    None => Expression::Value(0, Value::Error("Unexpected EOF".to_owned())),
                 }
             }
             Some(Token { line, typ }) => Expression::Value(
@@ -108,7 +118,7 @@ impl<'a> Parser<'a> {
         loop {
             let op = match self.scanner.peek() {
                 None => break,
-                Some(Token { typ, .. }) => typ
+                Some(Token { typ, .. }) => typ,
             };
 
             if let Some((l_bp, r_bp)) = op.infix_binding_power() {
@@ -116,7 +126,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 let Token { line, typ } = self.scanner.next().expect("Already peeked");
-    
+
                 let rhs = self.parse_numeric_expr(r_bp);
                 lhs = match typ {
                     TokenType::Plus => Expression::Add(line, Box::new(lhs), Box::new(rhs)),
@@ -133,7 +143,6 @@ impl<'a> Parser<'a> {
                         )
                     }
                 };
-
             }
 
             break;
@@ -241,46 +250,44 @@ mod tests {
 
         let result = parser.parse_numeric_expr(0);
         match result {
-            Expression::Negate(_, lhs) => {
-                match *lhs {
-                    Expression::Value(_, Value::Number(n)) => {
-                        assert_eq!(n, 1.0);
-                    },
-                    etc => panic!("Expected val expr, receied {:?}", etc)
+            Expression::Negate(_, lhs) => match *lhs {
+                Expression::Value(_, Value::Number(n)) => {
+                    assert_eq!(n, 1.0);
                 }
+                etc => panic!("Expected val expr, receied {:?}", etc),
             },
-            etc => panic!("Expected negation, receied {:?}", etc)
+            etc => panic!("Expected negation, receied {:?}", etc),
         }
     }
 
     #[test]
-    fn parenthized_exprs () {
+    fn parenthized_exprs() {
         let buff = String::from("((0 * 1))");
         let scanner = Scanner::new(&buff);
         let mut parser = Parser::new(scanner);
 
         let result = parser.parse_numeric_expr(0);
         match result {
-            Expression::Grouping(_, expr) => {
-                match *expr {
-                    Expression::Grouping(_, innerexpr) => {
-                        match *innerexpr {
-                            Expression::Multiply(_, mult_lhs, mult_rhs) => {
-                                match (*mult_lhs, *mult_rhs) {
-                                    (Expression::Value(_, Value::Number(lhs_n)), Expression::Value(_, Value::Number(rhs_n))) => {
-                                        assert_eq!(lhs_n, 0.0);
-                                        assert_eq!(rhs_n, 1.0);
-                                    }
-                                    (etc_lhs, etc_rhs) => panic!("Expected two numbers, found {:?} and {:?}", etc_lhs, etc_rhs)
-                                }
-                            },
-                            etc => panic!("Unexpected expr {:?}, expected multiply", etc)
+            Expression::Grouping(_, expr) => match *expr {
+                Expression::Grouping(_, innerexpr) => match *innerexpr {
+                    Expression::Multiply(_, mult_lhs, mult_rhs) => match (*mult_lhs, *mult_rhs) {
+                        (
+                            Expression::Value(_, Value::Number(lhs_n)),
+                            Expression::Value(_, Value::Number(rhs_n)),
+                        ) => {
+                            assert_eq!(lhs_n, 0.0);
+                            assert_eq!(rhs_n, 1.0);
                         }
+                        (etc_lhs, etc_rhs) => panic!(
+                            "Expected two numbers, found {:?} and {:?}",
+                            etc_lhs, etc_rhs
+                        ),
                     },
-                    etc => panic!("Unexpected expr {:?}, expected grouping", etc)
-                }
+                    etc => panic!("Unexpected expr {:?}, expected multiply", etc),
+                },
+                etc => panic!("Unexpected expr {:?}, expected grouping", etc),
             },
-            etc => panic!("Unexpected expr {:?}, expected grouping", etc)
+            etc => panic!("Unexpected expr {:?}, expected grouping", etc),
         }
     }
 
@@ -292,26 +299,20 @@ mod tests {
 
         let result = parser.parse_numeric_expr(0);
         match result {
-            Expression::Add(_, lhs, rhs) => {
-                match *lhs {
-                    Expression::Value(_, Value::Number(lhs_n)) => {
-                        match *rhs {
-                            Expression::Negate(_, negate_rhs) => {
-                                match *negate_rhs {
-                                    Expression::Value(_, Value::Number(negate_rhs_n)) => {
-                                        assert_eq!(lhs_n, 2.0);
-                                        assert_eq!(negate_rhs_n, 1.0);
-                                    },
-                                    etc => panic!("Expected numeric value right of negation, found {:?}", etc)
-                                }
-                            },
-                            etc => panic!("Expected negation, found {:?}", etc)
+            Expression::Add(_, lhs, rhs) => match *lhs {
+                Expression::Value(_, Value::Number(lhs_n)) => match *rhs {
+                    Expression::Negate(_, negate_rhs) => match *negate_rhs {
+                        Expression::Value(_, Value::Number(negate_rhs_n)) => {
+                            assert_eq!(lhs_n, 2.0);
+                            assert_eq!(negate_rhs_n, 1.0);
                         }
+                        etc => panic!("Expected numeric value right of negation, found {:?}", etc),
                     },
-                    etc => panic!("Expected numeral expr, found {:?}", etc)
-                }
+                    etc => panic!("Expected negation, found {:?}", etc),
+                },
+                etc => panic!("Expected numeral expr, found {:?}", etc),
             },
-            etc => panic!("Expected addition expr, found {:?}" , etc)
+            etc => panic!("Expected addition expr, found {:?}", etc),
         }
-    }    
+    }
 }
