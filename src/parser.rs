@@ -56,18 +56,11 @@ enum Statement {
 type Ast = Vec<Statement>;
 
 impl TokenType {
-    fn is_bin_op(&self) -> bool {
-        match *self {
-            TokenType::Plus | TokenType::Star | TokenType::Slash | TokenType::Dash => true,
-            _ => false,
-        }
-    }
-
-    fn infix_binding_power(&self) -> (u8, u8) {
+    fn infix_binding_power(&self) -> Option<(u8, u8)> {
         match self {
-            TokenType::Plus | TokenType::Dash => (1, 2),
-            TokenType::Star | TokenType::Slash => (3, 4),
-            etc => panic!("Bad argument to infix_binding_power: {:?}", etc),
+            TokenType::Plus | TokenType::Dash => Some((1, 2)),
+            TokenType::Star | TokenType::Slash => Some((3, 4)),
+            _ => None,
         }
     }
 
@@ -91,6 +84,17 @@ impl<'a> Parser<'a> {
                 let rhs = self.parse_numeric_expr(r_bp);
                 Expression::Negate(line, Box::new(rhs))
             },
+            Some(Token { line, typ: TokenType::LeftParen }) => {
+                let expr = self.parse_numeric_expr(0);
+                match self.scanner.next() {
+                    Some(Token {typ: TokenType::RightParen, .. }) => {
+                        Expression::Grouping(line, Box::new(expr))
+                    },
+                    Some(tok) => Expression::Value(tok.line, Value::Error(format!("Unexpected token {:?} in parsing grouping", tok.typ))),
+                    // TODO: Insert proper line num for EOF
+                    None => Expression::Value(0, Value::Error("Unexpected EOF".to_owned()))
+                }
+            }
             Some(Token { line, typ }) => Expression::Value(
                 line,
                 Value::Error(format!("Unexpected token {:?} on parsing binary op", typ)),
@@ -104,42 +108,35 @@ impl<'a> Parser<'a> {
         loop {
             let op = match self.scanner.peek() {
                 None => break,
-                Some(Token { typ, .. }) if typ.is_bin_op() => typ,
-                Some(Token { line, typ }) => {
-                    return Expression::Value(
-                        *line,
-                        Value::Error(format!(
-                            "Unexpected token {:?} when parsing binary operation",
-                            typ
-                        )),
-                    )
-                }
+                Some(Token { typ, .. }) => typ
             };
 
-            let (l_bp, r_bp) = op.infix_binding_power();
+            if let Some((l_bp, r_bp)) = op.infix_binding_power() {
+                if l_bp < min_bp {
+                    break;
+                }
+                let Token { line, typ } = self.scanner.next().expect("Already peeked");
+    
+                let rhs = self.parse_numeric_expr(r_bp);
+                lhs = match typ {
+                    TokenType::Plus => Expression::Add(line, Box::new(lhs), Box::new(rhs)),
+                    TokenType::Dash => Expression::Subtract(line, Box::new(lhs), Box::new(rhs)),
+                    TokenType::Star => Expression::Multiply(line, Box::new(lhs), Box::new(rhs)),
+                    TokenType::Slash => Expression::Divide(line, Box::new(lhs), Box::new(rhs)),
+                    etc => {
+                        return Expression::Value(
+                            line,
+                            Value::Error(format!(
+                                "Unexpected token {:?} when parsing binary operation",
+                                etc
+                            )),
+                        )
+                    }
+                };
 
-            if l_bp < min_bp {
-                break;
             }
 
-            let Token { line, typ } = self.scanner.next().expect("Already peeked");
-
-            let rhs = self.parse_numeric_expr(r_bp);
-            lhs = match typ {
-                TokenType::Plus => Expression::Add(line, Box::new(lhs), Box::new(rhs)),
-                TokenType::Dash => Expression::Subtract(line, Box::new(lhs), Box::new(rhs)),
-                TokenType::Star => Expression::Multiply(line, Box::new(lhs), Box::new(rhs)),
-                TokenType::Slash => Expression::Divide(line, Box::new(lhs), Box::new(rhs)),
-                etc => {
-                    return Expression::Value(
-                        line,
-                        Value::Error(format!(
-                            "Unexpected token {:?} when parsing binary operation",
-                            etc
-                        )),
-                    )
-                }
-            };
+            break;
         }
         lhs
     }
@@ -253,6 +250,37 @@ mod tests {
                 }
             },
             etc => panic!("Expected negation, receied {:?}", etc)
+        }
+    }
+
+    #[test]
+    fn parenthized_exprs () {
+        let buff = String::from("((0 * 1))");
+        let scanner = Scanner::new(&buff);
+        let mut parser = Parser::new(scanner);
+
+        let result = parser.parse_numeric_expr(0);
+        match result {
+            Expression::Grouping(_, expr) => {
+                match *expr {
+                    Expression::Grouping(_, innerexpr) => {
+                        match *innerexpr {
+                            Expression::Multiply(_, mult_lhs, mult_rhs) => {
+                                match (*mult_lhs, *mult_rhs) {
+                                    (Expression::Value(_, Value::Number(lhs_n)), Expression::Value(_, Value::Number(rhs_n))) => {
+                                        assert_eq!(lhs_n, 0.0);
+                                        assert_eq!(rhs_n, 1.0);
+                                    }
+                                    (etc_lhs, etc_rhs) => panic!("Expected two numbers, found {:?} and {:?}", etc_lhs, etc_rhs)
+                                }
+                            },
+                            etc => panic!("Unexpected expr {:?}, expected multiply", etc)
+                        }
+                    },
+                    etc => panic!("Unexpected expr {:?}, expected grouping", etc)
+                }
+            },
+            etc => panic!("Unexpected expr {:?}, expected grouping", etc)
         }
     }
 
